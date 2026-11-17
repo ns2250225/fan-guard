@@ -1,0 +1,98 @@
+# FanGuard 风扇管家
+
+Windows 10 / 11 桌面硬件监控与进程诊断工具：实时监控 CPU / GPU / 内存 / 磁盘 / 温度 / 风扇转速，定位高负载进程，智能分析风扇狂转的原因，并安全地结束异常进程。
+
+> 电脑没有运行大型软件，风扇却突然狂转？FanGuard 不仅告诉你是哪个进程占用了资源，还会告诉你为什么电脑发热、为什么风扇狂转，以及如何安全地解决问题。
+
+## 功能特性
+
+- **仪表盘**：CPU / GPU / 内存 / 磁盘 / 风扇状态卡片，最近 60 秒实时负载曲线，异常时顶部提示并可直接跳转排查。
+- **进程管理**：全量进程列表（CPU / 内存 / GPU / 显存多列排序、按名称或 PID 搜索、高负载排行），进程详情（文件路径、数字签名、线程、父子进程），支持结束进程 / 强制结束 / 结束进程树。
+- **智能诊断**：基于时间窗口统计（而非瞬时值）计算每个进程的「异常关联分数」，检测 CPU/GPU 持续高负载、高温、风扇高速旋转但负载低等异常，给出排查对象与优化建议。
+- **硬件监控**：CPU / GPU / 内存 / 磁盘 / 温度 / 风扇转速全覆盖，硬件不支持时明确显示「暂不支持读取」，绝不显示虚构数据。
+- **历史记录**：本地 SQLite 存储 CPU / GPU / 温度 / 风扇历史曲线与异常事件，支持 CSV 导出。
+- **系统托盘**：最小化到托盘后台运行，支持开机自启动。
+
+## 技术栈
+
+| 模块 | 技术 |
+|---|---|
+| 桌面框架 | Tauri 2 |
+| 前端 | Vue 3 + TypeScript + Tailwind CSS 4（shadcn 风格组件）+ ECharts + Vue Router |
+| 后端 | Rust |
+| 进程管理 | Windows API（NtQuerySystemInformation、OpenProcess、TerminateProcess 等） |
+| GPU 进程占用 | Windows PDH 性能计数器（GPU Engine / GPU Process Memory） |
+| 硬件传感器 | LibreHardwareMonitor（.NET 8 Sidecar，随主程序打包）+ HWiNFO 共享内存，NVIDIA 显卡额外支持 NVML 回退 |
+| 数据库 | SQLite（rusqlite，bundled 内置） |
+
+## 目录结构
+
+```
+src/                  Vue 前端
+  views/              仪表盘 / 进程管理 / 智能诊断 / 硬件监控 / 历史记录 / 系统设置
+  components/         通用组件、进程详情、结束进程确认流程、图表
+src-tauri/src/        Rust 核心
+  process.rs          进程枚举、CPU 占用计算、进程分类与关键进程保护
+  process_ops.rs      结束进程 / 强制结束 / 结束进程树、线程、文件信息、数字签名
+  pdh.rs              GPU、磁盘等性能计数器
+  hardware.rs         CPU / 内存 / 显卡适配器信息
+  sensors.rs          LibreHardwareMonitor Sidecar 守护与解析、NVML 回退
+  hwinfo.rs           HWiNFO 共享内存读取
+  hwinfo_manager.rs   HWiNFO 查找 / 导入 / 配置 / 启动 / 续期
+  diagnosis.rs        智能诊断引擎（时间窗口统计、异常关联评分、异常检测、建议）
+  monitor.rs          监控主循环与实时快照
+  db.rs               SQLite 历史记录与 CSV 导出
+  settings.rs         用户设置
+  tray.rs             系统托盘
+sidecar/FanGuard.Sensors/   LibreHardwareMonitor 传感器 Sidecar（C# / .NET 8）
+scripts/              Sidecar / 独立 exe 构建脚本、图标生成
+```
+
+## 环境要求
+
+- Node.js 18+
+- Rust（MSVC 工具链，x86_64-pc-windows-msvc）
+- .NET 8 SDK（构建传感器 Sidecar）
+- WebView2 运行时（Windows 11 自带）
+
+## 构建
+
+```powershell
+npm install
+npm run sidecar        # 构建 LibreHardwareMonitor 传感器 Sidecar，输出到 src-tauri/binaries
+npm run tauri dev      # 开发运行
+npm run tauri build    # 打包 Windows 安装程序（NSIS / MSI）
+```
+
+> Sidecar 必须先构建，Tauri 打包时会将 `src-tauri/binaries/fanguard-sensors-x86_64-pc-windows-msvc.exe` 作为 externalBin 一同打包。
+
+## 关于传感器与权限
+
+- FanGuard 默认 **不申请管理员权限**。进程、CPU、内存、磁盘、GPU 使用率在普通权限下即可读取。
+- CPU 温度 / 功耗、主板风扇转速通常需要以管理员身份运行；LibreHardwareMonitor 0.9.5 起使用 PawnIO 驱动读取底层传感器，如果系统未安装 PawnIO，这类数据可能仍不可用。
+- 硬件不支持读取时界面显示「暂不支持读取」，不会显示虚构数据，诊断仍会基于温度与负载进行。
+- 软件内提供「以管理员身份重启」按钮，仅在用户主动点击时请求 UAC 授权。
+
+## HWiNFO 自动集成
+
+LibreHardwareMonitor 读取不到 CPU 温度 / 风扇转速时（常见于未安装 PawnIO 驱动或部分笔记本），FanGuard 会自动使用 HWiNFO：
+
+- **自动查找**：正在运行的 HWiNFO、FanGuard 托管目录（`%LOCALAPPDATA%\FanGuard\hwinfo`）、FanGuard 同目录、注册表与 Program Files 中的安装版；
+- **自动导入**：在「下载」/「桌面」发现 HWiNFO 便携版（`hwi_*.zip` 或 `HWiNFO64.exe`）时，校验 REALiX 数字签名后解压到托管目录；
+- **自动配置**：写入 `HWiNFO64.INI`（仅传感器、开启共享内存、启动最小化、不显示欢迎窗口）；
+- **自动启动**：HWiNFO 需要管理员权限，FanGuard 未提权时会出现一次 UAC 确认；
+- **自动续期**：免费版共享内存 12 小时后失效，检测到后自动重启 HWiNFO。
+
+HWiNFO 是 REALiX 的专有软件，许可不允许随其他软件分发，因此 FanGuard 不内置它，首次需从官网下载一次便携版（硬件监控页提供「下载 HWiNFO」按钮）。
+
+## 安全与隐私设计
+
+- 关键系统进程（System、csrss、wininit、winlogon、services、lsass、svchost、dwm 等）禁止结束；伪装在系统目录之外的同名进程不享受保护。
+- 结束前以 PID + 创建时间校验进程身份，避免 PID 重用误杀。
+- 「结束进程」优先向窗口发送关闭请求（正常结束）；强制结束需确认；结束进程树需二次确认并跳过受保护的子进程。
+- 不提供无确认的批量强制结束，不自动结束任何进程，不修改风扇转速。
+- 所有数据和操作记录仅保存在本地（`%APPDATA%\com.fanguard.app`），不上传任何进程信息与硬件数据。
+
+## 许可证
+
+本项目暂未附带开源许可证，如需使用或分发请先联系作者。
