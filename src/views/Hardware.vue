@@ -255,13 +255,13 @@ const fansByKind = computed(() => {
           PawnIO {{ s.pawnio.version }} 已安装，以管理员身份运行 FanGuard 后 LibreHardwareMonitor 即可使用它读取 CPU 温度与主板风扇。
         </div>
 
-        <!-- 同方 / Uniwill 笔记本 EC -->
-        <div v-if="s.sensor.ec === 'needAdmin' && !store.elevated" class="mt-2.5 flex items-center gap-3 rounded-md border border-warn/40 bg-warn/10 p-2.5">
+        <!-- 厂商传感器接口（按品牌适配） -->
+        <div v-if="s.sensor.vendor.status === 'needAdmin' && !store.elevated" class="mt-2.5 flex items-center gap-3 rounded-md border border-warn/40 bg-warn/10 p-2.5">
           <ShieldAlert class="h-4 w-4 shrink-0 text-warn" />
           <div class="min-w-0 flex-1">
-            <div class="font-medium">检测到同方 / Uniwill 模具笔记本的嵌入式控制器（EC）</div>
+            <div class="font-medium">检测到 {{ s.sensor.vendor.name }} 厂商传感器接口</div>
             <div class="text-muted-foreground">
-              这类笔记本的风扇由 EC 控制，转速只能通过厂商 WMI 接口读取，Windows 仅允许管理员访问。以管理员身份运行后即可显示 CPU / GPU 风扇转速与占空比（只读取，不会修改风扇设置）。
+              {{ s.sensor.vendor.system }} 的风扇由嵌入式控制器管理，转速只能通过厂商 WMI 接口读取，Windows 仅允许管理员访问。以管理员身份运行后即可显示风扇转速（只读取，不会修改风扇设置）。
             </div>
           </div>
           <div class="flex shrink-0 items-center gap-2">
@@ -270,8 +270,14 @@ const fansByKind = computed(() => {
             <Button size="sm" @click="relaunch">以管理员身份重启</Button>
           </div>
         </div>
-        <div v-else-if="s.sensor.ec === 'available'" class="mt-2.5 text-muted-foreground">
-          已通过嵌入式控制器（Uniwill EC）读取笔记本风扇转速。
+        <div v-else-if="s.sensor.vendor.status === 'available'" class="mt-2.5 text-muted-foreground">
+          已通过 {{ s.sensor.vendor.name }} 读取风扇转速（{{ s.sensor.vendor.system }}）。
+        </div>
+        <div v-else-if="s.sensor.vendor.status === 'none' && !s.fans.length" class="mt-2.5 text-muted-foreground">
+          已识别为 {{ s.sensor.vendor.system }}，但本机不提供 {{ s.sensor.vendor.name }} 风扇接口<template v-if="s.sensor.vendor.id === 'dell'">（Dell 机型需安装 Dell Command | Monitor）</template>。
+        </div>
+        <div v-else-if="s.sensor.vendor.status === 'unsupported' && !s.fans.length && s.sensor.vendor.system" class="mt-2.5 text-muted-foreground">
+          {{ s.sensor.vendor.system }} 暂未适配厂商风扇接口（已适配：ASUS、Lenovo Legion、Dell、同方 / Uniwill 模具）。
         </div>
 
         <!-- HWiNFO 自动集成 -->

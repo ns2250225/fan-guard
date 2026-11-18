@@ -117,6 +117,13 @@ export interface AnomalyView {
   relatedName: string | null;
 }
 
+export interface VendorInfo {
+  id: "asus" | "lenovo" | "dell" | "uniwill" | "none";
+  name: string;
+  status: "available" | "needAdmin" | "none" | "unsupported";
+  system: string;
+}
+
 export interface PawnioStatus {
   installed: boolean;
   version: string | null;
@@ -149,7 +156,7 @@ export interface SensorStatus {
   mode: "auto" | "lhm" | "hwinfo";
   hwinfo: "disabled" | "notFound" | "inactive" | "invalid" | "stale" | "running";
   hwinfoSensors: number;
-  ec: "available" | "needAdmin" | "none";
+  vendor: VendorInfo;
 }
 
 export interface Snapshot {

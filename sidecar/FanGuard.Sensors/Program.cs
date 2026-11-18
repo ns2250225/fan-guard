@@ -58,8 +58,11 @@ internal static class Program
     private static readonly ManualResetEventSlim Wake = new(false);
     private static readonly object OutLock = new();
     private static Stream _stdout = Stream.Null;
-    private static UniwillEc? _ec;
-    private static string _ecStatus = "none";
+    private static IVendorProvider? _vendor;
+    private static string _vendorId = "none";
+    private static string _vendorName = "";
+    private static string _vendorStatus = "unsupported";
+    private static string _system = "";
 
     private static int Main(string[] args)
     {
@@ -81,8 +84,10 @@ internal static class Program
         _stdout = Console.OpenStandardOutput();
 
         bool admin = IsAdministrator();
-        // 同方 / Uniwill 模具笔记本：通过 EC 读取风扇转速（需要管理员权限）
-        _ecStatus = UniwillEc.Probe(out _ec);
+        // 按品牌适配厂商传感器接口（笔记本 EC 风扇等），多数需要管理员权限
+        var (manufacturer, model, board) = VendorSensors.SystemInfo();
+        _system = string.Join(" ", new[] { manufacturer, model, model.Contains(board, StringComparison.OrdinalIgnoreCase) ? "" : board }.Where(x => !string.IsNullOrWhiteSpace(x)));
+        (_vendor, _vendorId, _vendorName, _vendorStatus) = VendorSensors.Detect(manufacturer, board);
         WriteHello(admin);
 
         StartStdinReader();
@@ -269,7 +274,12 @@ internal static class Program
             w.WriteBoolean("admin", admin);
             w.WriteString("version", "1.0.0");
             w.WriteString("lhm", typeof(Computer).Assembly.GetName().Version?.ToString() ?? "unknown");
-            w.WriteString("ec", _ecStatus);
+            w.WriteStartObject("vendor");
+            w.WriteString("id", _vendorId);
+            w.WriteString("name", _vendorName);
+            w.WriteString("status", _vendorStatus);
+            w.WriteString("system", _system);
+            w.WriteEndObject();
             w.WriteEndObject();
         });
     }
@@ -298,16 +308,16 @@ internal static class Program
                 WriteHardware(w, hw, null);
             }
 
-            if (_ec != null)
+            if (_vendor != null)
             {
-                if (_ec.Broken)
+                if (_vendor.Broken)
                 {
-                    _ec.Dispose();
-                    _ec = null;
+                    _vendor.Dispose();
+                    _vendor = null;
                 }
                 else
                 {
-                    _ec.Write(w);
+                    _vendor.Write(w);
                 }
             }
 

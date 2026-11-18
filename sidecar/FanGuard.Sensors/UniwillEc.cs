@@ -16,7 +16,7 @@ using System.Management;
 
 namespace FanGuard.Sensors;
 
-internal sealed class UniwillEc : IDisposable
+internal sealed class UniwillEc : IVendorProvider
 {
     // EC RAM 地址（来源：Linux uniwill-laptop 驱动）
     private const ushort CpuTemp = 0x043E;
@@ -127,46 +127,21 @@ internal sealed class UniwillEc : IDisposable
     /// <summary>连续失败过多时停止读取</summary>
     public bool Broken => _failures > 50;
 
+    public string Id => "uniwill";
+
+    public string Name => "同方 / Uniwill EC";
+
     public void Write(System.Text.Json.Utf8JsonWriter w)
     {
-        var sensors = new List<(string id, string name, string type, double? value)>
+        VendorJson.WriteNode(w, Id, Name, new[]
         {
-            ("fan/0", "CPU Fan", "Fan", Rpm(Fan1RpmHi, Fan1RpmLo)),
-            ("fan/1", "GPU Fan", "Fan", Rpm(Fan2RpmHi, Fan2RpmLo)),
-            ("control/0", "CPU Fan", "Control", Pwm(Fan1Pwm)),
-            ("control/1", "GPU Fan", "Control", Pwm(Fan2Pwm)),
-            ("temperature/0", "CPU (EC)", "Temperature", Temp(CpuTemp)),
-            ("temperature/1", "GPU (EC)", "Temperature", Temp(GpuTemp)),
-        };
-
-        w.WriteStartObject();
-        w.WriteString("id", "/ec/uniwill");
-        w.WriteString("name", "嵌入式控制器 (Uniwill EC)");
-        w.WriteString("type", "EmbeddedController");
-        w.WriteNull("parent");
-        w.WriteStartArray("sensors");
-        foreach (var s in sensors)
-        {
-            w.WriteStartObject();
-            w.WriteString("id", "/ec/uniwill/" + s.id);
-            w.WriteString("name", s.name);
-            w.WriteString("type", s.type);
-            if (s.value.HasValue)
-            {
-                w.WriteNumber("value", s.value.Value);
-            }
-            else
-            {
-                w.WriteNull("value");
-            }
-
-            w.WriteNull("min");
-            w.WriteNull("max");
-            w.WriteEndObject();
-        }
-
-        w.WriteEndArray();
-        w.WriteEndObject();
+            new VendorReading("fan/0", "CPU Fan", "Fan", Rpm(Fan1RpmHi, Fan1RpmLo)),
+            new VendorReading("fan/1", "GPU Fan", "Fan", Rpm(Fan2RpmHi, Fan2RpmLo)),
+            new VendorReading("control/0", "CPU Fan", "Control", Pwm(Fan1Pwm)),
+            new VendorReading("control/1", "GPU Fan", "Control", Pwm(Fan2Pwm)),
+            new VendorReading("temperature/0", "CPU (EC)", "Temperature", Temp(CpuTemp)),
+            new VendorReading("temperature/1", "GPU (EC)", "Temperature", Temp(GpuTemp)),
+        });
     }
 
     public void Dispose()

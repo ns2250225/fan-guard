@@ -185,8 +185,8 @@ const fanTrend = computed(() => {
           :spark="recent.map((p) => p.fan)"
           :rows="
             s.fanRpm === null
-              ? s.sensor.ec === 'needAdmin' && !store.elevated
-                ? [{ label: '说明', value: '笔记本 EC 风扇需管理员权限读取' }]
+              ? s.sensor.vendor.status === 'needAdmin' && !store.elevated
+                ? [{ label: '说明', value: `${s.sensor.vendor.name} 需管理员权限读取` }]
                 : [{ label: '说明', value: '仍可基于温度与负载诊断' }]
               : [
                   { label: '风扇数量', value: `${s.fans.length} 个` },

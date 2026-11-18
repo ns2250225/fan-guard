@@ -75,8 +75,20 @@ pub struct SensorStatus {
     /// HWiNFO 状态：disabled / notFound / inactive / invalid / stale / running
     pub hwinfo: String,
     pub hwinfo_sensors: usize,
-    /// 笔记本 EC（Uniwill/同方模具）：available / needAdmin / none
-    pub ec: String,
+    /// 厂商传感器接口（笔记本 EC 风扇等）
+    pub vendor: VendorInfo,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct VendorInfo {
+    /// asus / lenovo / dell / uniwill / none
+    pub id: String,
+    pub name: String,
+    /// available / needAdmin / none（该品牌接口在本机不可用）/ unsupported（尚未适配的品牌）
+    pub status: String,
+    /// 制造商与型号
+    pub system: String,
 }
 
 #[derive(Debug, Clone, Serialize, Default)]
@@ -137,7 +149,7 @@ struct Inner {
     nvml_gpus: Vec<GpuSensor>,
     hwinfo_state: String,
     hwinfo_nodes: Vec<HwNode>,
-    ec: String,
+    vendor: VendorInfo,
 }
 
 pub const SRC_AUTO: u8 = 0;
@@ -230,7 +242,11 @@ impl SensorHub {
                 nvml_gpus: vec![],
                 hwinfo_state: "notFound".into(),
                 hwinfo_nodes: vec![],
-                ec: "none".into(),
+                vendor: VendorInfo {
+                    id: "none".into(),
+                    status: "unsupported".into(),
+                    ..Default::default()
+                },
             }),
             stdin: Mutex::new(None),
             child: Mutex::new(None),
@@ -456,12 +472,15 @@ impl SensorHub {
                 let mut g = self.inner.lock().unwrap();
                 g.admin = v.get("admin").and_then(|a| a.as_bool()).unwrap_or(false);
                 g.lhm_version = v.get("lhm").and_then(|a| a.as_str()).map(|s| s.to_string());
-                g.ec = v.get("ec").and_then(|a| a.as_str()).unwrap_or("none").to_string();
+                g.vendor = v
+                    .get("vendor")
+                    .and_then(|x| serde_json::from_value::<VendorInfo>(x.clone()).ok())
+                    .unwrap_or_default();
                 g.status = SidecarStatus::Running;
                 g.message = if g.admin {
                     None
-                } else if g.ec == "needAdmin" {
-                    Some("检测到同方 / Uniwill 模具笔记本的嵌入式控制器：风扇转速需要以管理员身份运行 FanGuard 才能读取".into())
+                } else if g.vendor.status == "needAdmin" {
+                    Some(format!("检测到 {} 厂商传感器接口：风扇转速需要以管理员身份运行 FanGuard 才能读取", g.vendor.name))
                 } else {
                     Some("当前未以管理员身份运行，部分 CPU 温度、功耗与主板风扇传感器可能无法读取".into())
                 };
@@ -559,7 +578,7 @@ impl SensorHub {
             .into(),
             hwinfo: if mode == SRC_LHM { "disabled".into() } else { g.hwinfo_state.clone() },
             hwinfo_sensors: g.hwinfo_nodes.iter().map(|n| n.sensors.len()).sum(),
-            ec: g.ec.clone(),
+            vendor: g.vendor.clone(),
         }
     }
 

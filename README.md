@@ -73,6 +73,22 @@ npm run tauri build    # 打包 Windows 安装程序（NSIS / MSI）
 - 硬件不支持读取时界面显示「暂不支持读取」，不会显示虚构数据，诊断仍会基于温度与负载进行。
 - 软件内提供「以管理员身份重启」按钮，仅在用户主动点击时请求 UAC 授权。
 
+## 厂商风扇接口（按品牌适配）
+
+很多笔记本的风扇由嵌入式控制器（EC）管理，LibreHardwareMonitor 与 HWiNFO 都读不到转速。传感器服务按 `Win32_ComputerSystem` 的制造商识别品牌，调用厂商控制软件使用的 ACPI WMI 读取接口：
+
+| 品牌 | 接口 | 参考来源 | 验证状态 |
+|---|---|---|---|
+| 同方 / Uniwill 模具（机械革命、雷神、TUXEDO、XMG 等） | `AcpiTest_MULong.GetSetULong`（读 EC） | Linux uniwill-laptop 驱动 | 已在机械革命 GM5AGEE 上确认接口存在 |
+| ASUS（ROG / TUF 等） | `AsusAtkWmi_WMNB.DSTS` | Linux asus-wmi、G-Helper | 未在真机验证 |
+| Lenovo Legion | `LENOVO_GAMEZONE_DATA.GetFanXSpeed`、`LENOVO_FAN_METHOD.Fan_GetCurrentFanSpeed` | Lenovo Legion Toolkit | 未在真机验证 |
+| Dell | `root\dcim\sysman` `DCIM_NumericSensor`（转速计） | Dell Command \| Monitor（需安装） | 未在真机验证 |
+
+- 只调用读取方法（DSTS / Get*），不调用任何写入方法；
+- 同方 / Uniwill 接口读写共用，且同名 WMI 类在蓝天（Clevo）模具上含义不同，因此只对已知品牌或主板型号（GM/GK/GX/PH/PF 开头）启用；
+- 除 Dell 外这些接口只允许管理员访问，需以管理员身份运行 FanGuard；
+- 未适配：HP（OMEN BIOS 接口为读写共用的命令协议）、MSI、Gigabyte 笔记本、ThinkPad。
+
 ## PawnIO 驱动
 
 LibreHardwareMonitor 0.9.5 起通过 PawnIO 驱动读取 CPU 温度 / 功耗与台式机主板风扇。FanGuard 会检测该驱动（与 LibreHardwareMonitor 相同，读取 `HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\PawnIO`），未安装或版本较旧时在「硬件监控」页与「系统设置」中提供一键安装：
