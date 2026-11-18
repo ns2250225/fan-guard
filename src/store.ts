@@ -166,6 +166,26 @@ export async function saveSettings(patch: Partial<Settings>, silent = true) {
   }
 }
 
+let pawnioBusy = false;
+export async function installPawnio() {
+  if (pawnioBusy) return;
+  pawnioBusy = true;
+  toast({ kind: "info", title: "正在安装 PawnIO 驱动", message: "请在 UAC 提示中点击「是」，安装完成后会自动重新加载传感器" });
+  try {
+    const v = await api.pawnioInstall();
+    toast({
+      kind: "success",
+      title: `PawnIO ${v} 安装完成`,
+      message: store.elevated ? "传感器服务已重新加载" : "以管理员身份运行 FanGuard 后即可读取 CPU 温度、功耗与主板风扇",
+      action: store.elevated ? undefined : { label: "以管理员身份重启", run: () => api.relaunchAdmin() },
+    }, 8000);
+  } catch (e) {
+    toast({ kind: "error", title: "PawnIO 安装未完成", message: String(e), action: { label: "打开官网", run: () => api.pawnioOpenSite() } }, 8000);
+  } finally {
+    pawnioBusy = false;
+  }
+}
+
 export async function toggleWhitelist(name: string) {
   if (!store.settings) return;
   const add = !store.settings.whitelist.some((w) => w.toLowerCase() === name.toLowerCase());

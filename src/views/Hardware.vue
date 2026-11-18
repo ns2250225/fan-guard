@@ -1,14 +1,14 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useRoute } from "vue-router";
-import { ShieldAlert, ChevronRight, ChevronDown, CircleCheck, CircleAlert } from "lucide-vue-next";
+import { ShieldAlert, ChevronRight, ChevronDown, CircleCheck, CircleAlert, HardDrive } from "lucide-vue-next";
 import Card from "../components/ui/Card.vue";
 import Button from "../components/ui/Button.vue";
 import Badge from "../components/ui/Badge.vue";
 import Progress from "../components/ui/Progress.vue";
 import RealtimeChart from "../components/RealtimeChart.vue";
 import { api } from "../api";
-import { store, toast, saveSettings } from "../store";
+import { store, toast, saveSettings, installPawnio } from "../store";
 import Segmented from "../components/ui/Segmented.vue";
 import Switch from "../components/ui/Switch.vue";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
@@ -230,6 +230,31 @@ const fansByKind = computed(() => {
             </Button>
           </div>
         </div>
+        <!-- PawnIO 驱动 -->
+        <div
+          v-if="st.sensorSource !== 'hwinfo' && (!s.pawnio.installed || s.pawnio.updateAvailable)"
+          class="mt-2.5 flex items-center gap-3 rounded-md border border-primary/40 bg-primary/10 p-2.5"
+        >
+          <HardDrive class="h-4 w-4 shrink-0 text-primary" />
+          <div class="min-w-0 flex-1">
+            <div class="font-medium">
+              <template v-if="!s.pawnio.installed">未安装 PawnIO 驱动</template>
+              <template v-else>PawnIO 驱动可更新（已安装 {{ s.pawnio.version }}，内置 {{ s.pawnio.bundledVersion }}）</template>
+            </div>
+            <div class="text-muted-foreground">
+              LibreHardwareMonitor 通过 PawnIO 读取 CPU 温度 / 功耗以及台式机主板的风扇转速，未安装时即使以管理员身份运行也读不到。
+              PawnIO 是开源、已签名的驱动，安装只需一次 UAC 授权{{ s.pawnio.bundledVersion ? "（安装程序已内置，无需联网）" : "（将从官方 GitHub 下载）" }}。
+            </div>
+          </div>
+          <div class="flex shrink-0 items-center gap-2">
+            <Button size="sm" variant="ghost" @click="api.pawnioOpenSite()">了解 PawnIO</Button>
+            <Button size="sm" :loading="s.pawnio.installing" @click="installPawnio">{{ s.pawnio.installed ? "更新驱动" : "安装驱动" }}</Button>
+          </div>
+        </div>
+        <div v-else-if="st.sensorSource !== 'hwinfo' && s.pawnio.installed && !store.elevated" class="mt-2.5 text-muted-foreground">
+          PawnIO {{ s.pawnio.version }} 已安装，以管理员身份运行 FanGuard 后 LibreHardwareMonitor 即可使用它读取 CPU 温度与主板风扇。
+        </div>
+
         <!-- 同方 / Uniwill 笔记本 EC -->
         <div v-if="s.sensor.ec === 'needAdmin' && !store.elevated" class="mt-2.5 flex items-center gap-3 rounded-md border border-warn/40 bg-warn/10 p-2.5">
           <ShieldAlert class="h-4 w-4 shrink-0 text-warn" />
@@ -256,7 +281,8 @@ const fansByKind = computed(() => {
               <div class="flex items-center gap-2">
                 <span class="font-medium">HWiNFO 自动集成</span>
                 <Badge :color="mgrColor">{{ mgrStageText }}</Badge>
-                <span v-if="mgr.managed" class="text-muted-foreground">· 托管副本</span>
+                <span v-if="mgr.bundled" class="text-muted-foreground">· FanGuard 内置</span>
+                <span v-else-if="mgr.managed" class="text-muted-foreground">· 托管副本</span>
               </div>
               <div v-if="mgr.path" class="mt-0.5 truncate text-muted-foreground" :title="mgr.path">{{ mgr.path }}</div>
               <div v-if="mgr.message" class="mt-0.5 text-muted-foreground">{{ mgr.message }}</div>
@@ -272,8 +298,7 @@ const fansByKind = computed(() => {
             </div>
           </div>
           <div v-if="!mgr.path" class="mt-2 text-muted-foreground">
-            点击「下载 HWiNFO」，在官网下载 <b class="text-foreground">便携版（Portable，hwi_xxx.zip）</b> 到「下载」文件夹即可：FanGuard 会自动发现、校验签名、解压、开启共享内存并在后台启动，无需手动设置。
-            HWiNFO 许可不允许随其他软件分发，因此需要从官网获取一次。
+            当前版本的 FanGuard 未内置 HWiNFO（构建时未找到 hwinfo.zip）。可将 HWiNFO 便携版（hwi_xxx.zip）放到「下载」文件夹或 FanGuard 所在目录，FanGuard 会自动校验签名并导入；也可点击「导入文件…」。
           </div>
         </div>
       </div>

@@ -73,17 +73,25 @@ npm run tauri build    # 打包 Windows 安装程序（NSIS / MSI）
 - 硬件不支持读取时界面显示「暂不支持读取」，不会显示虚构数据，诊断仍会基于温度与负载进行。
 - 软件内提供「以管理员身份重启」按钮，仅在用户主动点击时请求 UAC 授权。
 
-## HWiNFO 自动集成
+## PawnIO 驱动
 
-LibreHardwareMonitor 读取不到 CPU 温度 / 风扇转速时（常见于未安装 PawnIO 驱动或部分笔记本），FanGuard 会自动使用 HWiNFO：
+LibreHardwareMonitor 0.9.5 起通过 PawnIO 驱动读取 CPU 温度 / 功耗与台式机主板风扇。FanGuard 会检测该驱动（与 LibreHardwareMonitor 相同，读取 `HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\PawnIO`），未安装或版本较旧时在「硬件监控」页与「系统设置」中提供一键安装：
 
-- **自动查找**：正在运行的 HWiNFO、FanGuard 托管目录（`%LOCALAPPDATA%\FanGuard\hwinfo`）、FanGuard 同目录、注册表与 Program Files 中的安装版；
-- **自动导入**：在「下载」/「桌面」发现 HWiNFO 便携版（`hwi_*.zip` 或 `HWiNFO64.exe`）时，校验 REALiX 数字签名后解压到托管目录；
-- **自动配置**：写入 `HWiNFO64.INI`（仅传感器、开启共享内存、启动最小化、不显示欢迎窗口）；
-- **自动启动**：HWiNFO 需要管理员权限，FanGuard 未提权时会出现一次 UAC 确认；
-- **自动续期**：免费版共享内存 12 小时后失效，检测到后自动重启 HWiNFO。
+- **内置安装程序**：官方 `PawnIO_setup.exe`（安装程序声明 "This installer can be redistributed unmodified"），构建脚本缺失时会自动下载；
+- **安全安装**：运行前校验 namazso 数字签名，通过一次 UAC 授权执行 `-install -silent`，完成后自动重新加载传感器服务；
+- **权限**：驱动安装后仍需以管理员身份运行 FanGuard，LibreHardwareMonitor 才能访问它。
 
-HWiNFO 是 REALiX 的专有软件，许可不允许随其他软件分发，因此 FanGuard 不内置它，首次需从官网下载一次便携版（硬件监控页提供「下载 HWiNFO」按钮）。
+## HWiNFO 内置与自动集成
+
+构建时若项目根目录（或 `src-tauri/binaries/`）存在 `hwinfo.zip`（HWiNFO 便携版），会提取其中的 `HWiNFO64.exe` 内置到 FanGuard.exe：
+
+- **自动释放与配置**：需要时释放到 `%LOCALAPPDATA%\FanGuard\hwinfo`，写入 `HWiNFO64.INI`（仅传感器、开启共享内存、启动最小化、不显示欢迎窗口）；
+- **自动启动**：LibreHardwareMonitor 读不到 CPU 温度或风扇时启动；HWiNFO 需要管理员权限，FanGuard 未提权时会出现一次 UAC 确认；
+- **安全校验**：每次启动 HWiNFO 前校验 REALiX 数字签名；
+- **自动续期**：免费版共享内存 12 小时后失效，检测到后自动重启 HWiNFO；
+- **未内置时**：仍支持自动导入「下载」文件夹或 FanGuard 所在目录中的便携版。
+
+> 许可提醒：HWiNFO 是 REALiX 的专有软件，免费版仅限非商业使用。将内置 HWiNFO 的 FanGuard 分发给他人之前，请先确认 REALiX 的再分发许可。
 
 ## 安全与隐私设计
 

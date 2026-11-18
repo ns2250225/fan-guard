@@ -521,3 +521,28 @@ pub async fn hwinfo_import(state: St<'_>, path: String) -> Result<String, String
 pub fn hwinfo_open_download() -> Result<(), String> {
     crate::hwinfo_manager::open_download_page()
 }
+
+// ---------------------------------------------------------------------------
+// PawnIO 驱动
+// ---------------------------------------------------------------------------
+
+#[tauri::command]
+pub fn pawnio_status() -> crate::pawnio::PawnioStatus {
+    crate::pawnio::refresh()
+}
+
+#[tauri::command]
+pub async fn pawnio_install(state: St<'_>) -> Result<String, String> {
+    let v = tauri::async_runtime::spawn_blocking(crate::pawnio::install)
+        .await
+        .map_err(|e| e.to_string())??;
+    // 重启 LibreHardwareMonitor，使驱动立即生效
+    state.sensors.restart_lhm();
+    state.wake_now();
+    Ok(v)
+}
+
+#[tauri::command]
+pub fn pawnio_open_site() -> Result<(), String> {
+    crate::pawnio::open_homepage()
+}

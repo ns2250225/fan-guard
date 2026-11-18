@@ -7,6 +7,7 @@ mod hardware;
 mod hwinfo;
 mod hwinfo_manager;
 mod monitor;
+mod pawnio;
 mod pdh;
 mod process;
 mod process_ops;
@@ -187,6 +188,9 @@ pub fn run() {
             commands::hwinfo_launch,
             commands::hwinfo_import,
             commands::hwinfo_open_download,
+            commands::pawnio_status,
+            commands::pawnio_install,
+            commands::pawnio_open_site,
         ])
         .build(tauri::generate_context!())
         .expect("FanGuard 启动失败")

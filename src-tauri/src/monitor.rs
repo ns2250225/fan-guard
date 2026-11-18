@@ -85,6 +85,7 @@ pub struct Snapshot {
     pub level_text: String,
     pub sensor: SensorStatus,
     pub hwinfo_mgr: crate::hwinfo_manager::HwinfoMgrStatus,
+    pub pawnio: crate::pawnio::PawnioStatus,
     pub new_markers: Vec<Marker>,
     pub point: SysPoint,
 }
@@ -467,6 +468,7 @@ fn monitor_loop(app: AppHandle) {
             anomalies,
             sensor: state.sensors.status(),
             hwinfo_mgr: state.hwinfo_mgr.status(),
+            pawnio: crate::pawnio::status(),
             new_markers,
             point,
         });

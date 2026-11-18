@@ -93,7 +93,7 @@ fn classify(name: &str) -> &'static str {
     let n = name.to_lowercase();
     if n.starts_with("cpu [") || n.starts_with("cpu[") {
         "Cpu"
-    } else if n.starts_with("gpu [") || n.starts_with("gpu[") {
+    } else if n.starts_with("gpu [") || n.starts_with("gpu[") || n.starts_with("dgpu [") || n.starts_with("igpu [") {
         "GpuHwinfo"
     } else if n.starts_with("s.m.a.r.t") || n.starts_with("drive:") || n.starts_with("drive [") {
         "Storage"

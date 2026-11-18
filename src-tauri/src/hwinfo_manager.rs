@@ -9,7 +9,8 @@
 //!    （HWiNFO 需要管理员权限，FanGuard 未提权时会出现一次 UAC 确认）；
 //! 5. 自动续期：免费版共享内存 12 小时后失效，检测到后自动重启 HWiNFO。
 //!
-//! HWiNFO 是 REALiX 的专有软件，许可不允许随其他软件再分发，因此 FanGuard 不内置它。
+//! 构建时若项目中存在 hwinfo.zip（HWiNFO 便携版），会将其中的 HWiNFO64.exe 内置到 FanGuard，
+//! 首次需要时释放到托管目录，用户无需自行下载。每次以管理员权限启动前都会校验 REALiX 数字签名。
 
 use crate::process::{query_image_path, query_processes};
 use crate::process_ops;
@@ -26,6 +27,15 @@ use windows_sys::Win32::Foundation::GetLastError;
 use windows_sys::Win32::UI::Shell::{ShellExecuteExW, SEE_MASK_NOASYNC, SHELLEXECUTEINFOW};
 
 const EXE_NAMES: &[&str] = &["HWiNFO64.exe", "HWiNFO32.exe", "HWiNFO.exe"];
+
+/// 构建时从 hwinfo.zip 中提取并内置的 HWiNFO64.exe
+#[cfg(embedded_hwinfo)]
+static EMBEDDED: &[u8] = include_bytes!(env!("FANGUARD_HWINFO_EXE"));
+#[cfg(embedded_hwinfo)]
+const EMBEDDED_HASH: &str = env!("FANGUARD_HWINFO_HASH");
+const BUNDLE_MARKER: &str = "fanguard-bundled.txt";
+
+pub const BUNDLED: bool = cfg!(embedded_hwinfo);
 const ERROR_CANCELLED: u32 = 1223;
 const SW_HIDE: i32 = 0;
 const SW_SHOWMINNOACTIVE: i32 = 7;
@@ -51,6 +61,8 @@ pub struct HwinfoMgrStatus {
     pub path: Option<String>,
     /// 是否为 FanGuard 托管的副本
     pub managed: bool,
+    /// 是否为 FanGuard 内置的 HWiNFO
+    pub bundled: bool,
     pub running: bool,
     pub launched_by_us: bool,
     /// 配置文件是否已写入（安装在 Program Files 且未提权时可能无法写入）
@@ -71,6 +83,48 @@ pub struct HwinfoManager {
     last_launch: Mutex<Option<Instant>>,
     last_restart: Mutex<Option<Instant>>,
     rejected: Mutex<HashSet<PathBuf>>,
+    /// 已通过签名校验的文件（路径、大小、修改时间），避免重复校验
+    verified: Mutex<Option<(PathBuf, u64, Option<std::time::SystemTime>)>>,
+}
+
+/// 将内置的 HWiNFO 释放到托管目录（版本未变化时跳过）；返回 exe 路径
+#[cfg(embedded_hwinfo)]
+fn ensure_embedded() -> Option<PathBuf> {
+    let dir = managed_dir();
+    let exe = dir.join("HWiNFO64.exe");
+    let marker = dir.join(BUNDLE_MARKER);
+    let current = std::fs::read_to_string(&marker).unwrap_or_default();
+    let size_ok = std::fs::metadata(&exe).map(|m| m.len() == EMBEDDED.len() as u64).unwrap_or(false);
+    if current.trim() == EMBEDDED_HASH && size_ok {
+        return Some(exe);
+    }
+    // 托管副本正在运行时无法替换，继续使用现有文件
+    if find_running().map_or(false, |(_, p)| p.map_or(false, |p| p.starts_with(&dir))) {
+        return exe.is_file().then_some(exe);
+    }
+    std::fs::create_dir_all(&dir).ok()?;
+    let tmp = dir.join(format!("HWiNFO64.exe.{}.tmp", std::process::id()));
+    std::fs::write(&tmp, EMBEDDED).ok()?;
+    let _ = std::fs::remove_file(&exe);
+    if std::fs::rename(&tmp, &exe).is_err() {
+        let _ = std::fs::remove_file(&tmp);
+        return exe.is_file().then_some(exe);
+    }
+    let _ = std::fs::write(&marker, EMBEDDED_HASH);
+    configure_ini(&exe);
+    Some(exe)
+}
+
+#[cfg(not(embedded_hwinfo))]
+fn ensure_embedded() -> Option<PathBuf> {
+    None
+}
+
+/// 托管目录中的 HWiNFO 是否就是内置版本
+fn is_bundled_copy(exe: &Path) -> bool {
+    BUNDLED
+        && exe.starts_with(managed_dir())
+        && std::fs::read_to_string(managed_dir().join(BUNDLE_MARKER)).map_or(false, |s| !s.trim().is_empty())
 }
 
 fn managed_dir() -> PathBuf {
@@ -293,6 +347,7 @@ impl HwinfoManager {
             last_launch: Mutex::new(None),
             last_restart: Mutex::new(None),
             rejected: Mutex::new(HashSet::new()),
+            verified: Mutex::new(None),
         })
     }
 
@@ -331,6 +386,26 @@ impl HwinfoManager {
         self.declined.store(false, Ordering::SeqCst);
         self.force_launch.store(true, Ordering::SeqCst);
         self.wake();
+    }
+
+    /// 以管理员权限启动前校验 REALiX 签名（结果按文件大小与修改时间缓存）
+    fn verify(&self, exe: &Path) -> Result<(), String> {
+        let meta = std::fs::metadata(exe).map_err(|e| format!("无法读取 {}：{}", exe.display(), e))?;
+        let key = (exe.to_path_buf(), meta.len(), meta.modified().ok());
+        if self.verified.lock().unwrap().as_ref() == Some(&key) {
+            return Ok(());
+        }
+        let sig = process_ops::signature(&exe.to_string_lossy());
+        let signer = sig.signer.clone().unwrap_or_default();
+        if sig.status != "valid" || !signer.to_lowercase().contains("realix") {
+            return Err(format!(
+                "HWiNFO 数字签名校验未通过（{}，签名者：{}），出于安全考虑未启动",
+                sig.status_text,
+                if signer.is_empty() { "无" } else { &signer }
+            ));
+        }
+        *self.verified.lock().unwrap() = Some(key);
+        Ok(())
     }
 
     fn set(&self, f: impl FnOnce(&mut HwinfoMgrStatus)) {
@@ -443,7 +518,12 @@ impl HwinfoManager {
         let force = self.force_launch.swap(false, Ordering::SeqCst);
         let mode = self.hub.mode();
         let running = find_running();
-        let mut exe = running.as_ref().and_then(|(_, p)| p.clone()).or_else(find_installed);
+        let bundled_exe = if mode != SRC_LHM && (auto || force) { ensure_embedded() } else { None };
+        let mut exe = running
+            .as_ref()
+            .and_then(|(_, p)| p.clone())
+            .or(bundled_exe)
+            .or_else(find_installed);
 
         // 自动导入用户下载的便携版
         if exe.is_none() && (auto || force) && mode != SRC_LHM {
@@ -468,6 +548,7 @@ impl HwinfoManager {
             s.auto = auto;
             s.path = exe.as_ref().map(|p| p.display().to_string());
             s.managed = managed;
+            s.bundled = exe.as_ref().map_or(false, |p| is_bundled_copy(p));
             s.running = running.is_some();
             s.launched_by_us = self.launched_by_us.load(Ordering::SeqCst);
         });
@@ -547,6 +628,14 @@ impl HwinfoManager {
             return;
         }
 
+        if let Err(e) = self.verify(&exe) {
+            *self.last_launch.lock().unwrap() = Some(Instant::now());
+            self.set(|s| {
+                s.stage = "error".into();
+                s.message = Some(e);
+            });
+            return;
+        }
         let configured = configure_ini(&exe);
         self.set(|s| {
             s.stage = "launching".into();
@@ -583,6 +672,10 @@ impl HwinfoManager {
 
     fn restart(&self, pid: u32, exe: &Path) {
         *self.last_restart.lock().unwrap() = Some(Instant::now());
+        if let Err(e) = self.verify(exe) {
+            self.set(|s| s.message = Some(e));
+            return;
+        }
         configure_ini(exe);
         self.set(|s| s.message = Some("HWiNFO 共享内存已到期，正在自动重启 HWiNFO…".into()));
         let r = if process_ops::is_elevated() {

@@ -52,4 +52,6 @@ export const api = {
   hwinfoLaunch: () => invoke<void>("hwinfo_launch"),
   hwinfoImport: (path: string) => invoke<string>("hwinfo_import", { path }),
   hwinfoOpenDownload: () => invoke<void>("hwinfo_open_download"),
+  pawnioInstall: () => invoke<string>("pawnio_install"),
+  pawnioOpenSite: () => invoke<void>("pawnio_open_site"),
 };

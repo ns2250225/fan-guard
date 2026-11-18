@@ -1,4 +1,4 @@
-# 构建 LibreHardwareMonitor 传感器 Sidecar，并复制到 Tauri externalBin 目录
+﻿# 构建 LibreHardwareMonitor 传感器 Sidecar，并复制到 Tauri externalBin 目录
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
 $proj = Join-Path $root "sidecar\FanGuard.Sensors\FanGuard.Sensors.csproj"

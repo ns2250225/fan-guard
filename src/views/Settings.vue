@@ -6,7 +6,7 @@ import Button from "../components/ui/Button.vue";
 import Switch from "../components/ui/Switch.vue";
 import Select from "../components/ui/Select.vue";
 import Segmented from "../components/ui/Segmented.vue";
-import { store, saveSettings, toast } from "../store";
+import { store, saveSettings, toast, installPawnio } from "../store";
 import { api } from "../api";
 import type { Settings } from "../types";
 
@@ -272,6 +272,22 @@ const retentionOpts = [
               <div>启动时请求一次 UAC 授权。笔记本嵌入式控制器的风扇转速、CPU 温度与功耗需要此权限；拒绝授权时以普通权限继续运行。</div>
             </div>
             <Switch :model-value="st.runAsAdmin" @update:model-value="(v) => set('runAsAdmin', v)" />
+          </div>
+          <div v-if="store.snapshot" class="flex items-center justify-between">
+            <div>
+              <div class="text-[13px] text-foreground">
+                PawnIO 驱动：{{ store.snapshot.pawnio.installed ? `已安装 ${store.snapshot.pawnio.version ?? ""}` : "未安装" }}
+              </div>
+              <div>LibreHardwareMonitor 读取 CPU 温度 / 功耗与主板风扇所需的开源驱动，安装需要一次 UAC 授权。</div>
+            </div>
+            <Button
+              v-if="!store.snapshot.pawnio.installed || store.snapshot.pawnio.updateAvailable"
+              size="sm"
+              variant="outline"
+              :loading="store.snapshot.pawnio.installing"
+              @click="installPawnio"
+              >{{ store.snapshot.pawnio.installed ? "更新驱动" : "安装驱动" }}</Button
+            >
           </div>
           <div>所有进程信息与硬件数据仅保存在本机，不会上传；不收集用户文件内容；所有操作记录保存在本地数据库。</div>
           <div>V1.0 不修改风扇转速、不提供风扇曲线控制，也不会自动结束任何进程。</div>

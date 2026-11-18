@@ -117,11 +117,20 @@ export interface AnomalyView {
   relatedName: string | null;
 }
 
+export interface PawnioStatus {
+  installed: boolean;
+  version: string | null;
+  bundledVersion: string | null;
+  updateAvailable: boolean;
+  installing: boolean;
+}
+
 export interface HwinfoMgrStatus {
   auto: boolean;
   stage: "disabled" | "notInstalled" | "importing" | "ready" | "launching" | "running" | "declined" | "error";
   path: string | null;
   managed: boolean;
+  bundled: boolean;
   running: boolean;
   launchedByUs: boolean;
   configured: boolean | null;
@@ -171,6 +180,7 @@ export interface Snapshot {
   levelText: string;
   sensor: SensorStatus;
   hwinfoMgr: HwinfoMgrStatus;
+  pawnio: PawnioStatus;
   newMarkers: Marker[];
   point: SysPoint;
 }

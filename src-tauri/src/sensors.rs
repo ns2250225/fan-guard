@@ -153,6 +153,8 @@ pub struct SensorHub {
     paused: AtomicBool,
     nvml_enabled: AtomicBool,
     source: AtomicU8,
+    /// 主动请求重启 Sidecar（例如安装 PawnIO 后），重启时不计入失败次数
+    restart_requested: AtomicBool,
 }
 
 /// 构建时嵌入主程序的传感器 Sidecar（单文件发布）
@@ -237,6 +239,7 @@ impl SensorHub {
             paused: AtomicBool::new(false),
             nvml_enabled: AtomicBool::new(false),
             source: AtomicU8::new(SRC_AUTO),
+            restart_requested: AtomicBool::new(false),
         })
     }
 
@@ -246,6 +249,12 @@ impl SensorHub {
 
     pub fn mode(&self) -> u8 {
         self.source()
+    }
+
+    /// 重启 LibreHardwareMonitor Sidecar，使新安装的驱动生效
+    pub fn restart_lhm(&self) {
+        self.restart_requested.store(true, Ordering::SeqCst);
+        self.send("quit");
     }
 
     pub fn is_stopping(&self) -> bool {
@@ -416,8 +425,8 @@ impl SensorHub {
             if self.stopping.load(Ordering::SeqCst) {
                 break;
             }
-            if self.source() == SRC_HWINFO {
-                // 用户切换为仅 HWiNFO 导致的正常退出
+            if self.source() == SRC_HWINFO || self.restart_requested.swap(false, Ordering::SeqCst) {
+                // 用户切换数据来源或主动请求重启导致的正常退出
                 failures = 0;
                 continue;
             }
