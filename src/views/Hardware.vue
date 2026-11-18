@@ -414,8 +414,12 @@ const fansByKind = computed(() => {
             </div>
           </div>
           <div class="mt-3 space-y-1 text-xs">
-            <div v-for="t in s.temps.filter((t) => t.hwType === 'Storage')" :key="t.hardware + t.name" class="flex justify-between">
-              <span class="truncate text-muted-foreground">{{ t.hardware }} · {{ t.name }}</span><span class="tabular">{{ fmtTemp(t.value) }}</span>
+            <div v-for="d in s.disk.temps" :key="d.hardware" class="flex justify-between gap-3">
+              <span class="truncate text-muted-foreground" :title="`取自传感器：${d.sensor}`">{{ d.hardware }}</span>
+              <span class="tabular" :style="{ color: statusColor[tempStatus(d.value, st.diskTempThreshold)] }">{{ fmtTemp(d.value) }}</span>
+            </div>
+            <div v-if="s.disk.temps.length" class="pt-0.5 text-[11px] text-muted-foreground/80">
+              每块盘取整盘温度（NVMe 为 Composite），主控等单点传感器见「温度监控」
             </div>
           </div>
         </Card>

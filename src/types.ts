@@ -174,6 +174,8 @@ export interface Snapshot {
     active: number | null;
     temp: number | null;
     tempName: string | null;
+    /** 每块磁盘的代表温度（NVMe 优先整盘复合温度） */
+    temps: { hardware: string; sensor: string; value: number }[];
   };
   fans: FanReading[];
   fanRpm: number | null;

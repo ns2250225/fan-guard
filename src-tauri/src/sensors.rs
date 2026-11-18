@@ -127,6 +127,56 @@ pub struct TempReading {
     pub max: Option<f64>,
 }
 
+/// 一块磁盘的代表温度
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DiskTemp {
+    /// 磁盘名称
+    pub hardware: String,
+    /// 选中的传感器名称
+    pub sensor: String,
+    pub value: f64,
+}
+
+/// 存储温度传感器的代表性等级。
+/// NVMe 盘会同时上报整盘复合温度与主控 / NAND 等单点温度，单点温度空闲时也可能明显偏高，
+/// 不能当作整盘温度：
+/// - LibreHardwareMonitor：Composite Temperature + Temperature Sensor 1/2…
+/// - HWiNFO：Drive Temperature + Drive Temperature 2…
+fn disk_temp_rank(t: &TempReading) -> u8 {
+    let name = t.name.trim().to_lowercase();
+    if name.contains("composite") || name == "drive temperature" || name == "temperature" || name == "温度" {
+        3 // 整盘复合温度（NVMe Composite / SATA 唯一温度）
+    } else if name.contains("temperature") || name.contains("温度") {
+        2 // 带序号或带部位的单点传感器
+    } else {
+        1 // 兜底
+    }
+}
+
+/// 每块磁盘选出最有代表性的温度：组内取等级最高者，同等级取较大值
+pub fn disk_temperatures(temps: &[TempReading]) -> Vec<DiskTemp> {
+    let mut best: Vec<(u8, &TempReading)> = vec![];
+    for t in temps.iter().filter(|t| t.hw_type == "Storage") {
+        let rank = disk_temp_rank(t);
+        match best.iter_mut().find(|(_, b)| b.hardware == t.hardware) {
+            Some(slot) => {
+                if (rank, t.value) > (slot.0, slot.1.value) {
+                    *slot = (rank, t);
+                }
+            }
+            None => best.push((rank, t)),
+        }
+    }
+    best.into_iter()
+        .map(|(_, t)| DiskTemp {
+            hardware: t.hardware.clone(),
+            sensor: t.name.clone(),
+            value: t.value,
+        })
+        .collect()
+}
+
 #[derive(Debug, Clone, Serialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct SensorSummary {
@@ -1013,5 +1063,52 @@ impl Nvml {
             }
         }
         out
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn t(hw: &str, name: &str, v: f64) -> TempReading {
+        TempReading {
+            name: name.into(),
+            hardware: hw.into(),
+            hw_type: "Storage".into(),
+            value: v,
+            max: None,
+        }
+    }
+
+    #[test]
+    fn nvme_composite_wins_over_hot_point_sensor() {
+        let temps = vec![
+            t("NVMe A", "Composite Temperature", 45.0),
+            t("NVMe A", "Temperature Sensor 1", 44.0),
+            t("NVMe A", "Temperature Sensor 2", 89.0),
+            t("NVMe B", "Drive Temperature", 38.0),
+            t("NVMe B", "Drive Temperature 2", 71.0),
+            t("SATA C", "Temperature", 33.0),
+            t("SATA C", "Airflow Temperature", 36.0),
+        ];
+        let d = disk_temperatures(&temps);
+        let get = |hw: &str| d.iter().find(|x| x.hardware == hw).unwrap().value;
+        assert_eq!(d.len(), 3);
+        assert_eq!(get("NVMe A"), 45.0);
+        assert_eq!(get("NVMe B"), 38.0);
+        assert_eq!(get("SATA C"), 33.0);
+    }
+
+    #[test]
+    fn falls_back_to_hottest_same_rank() {
+        let temps = vec![t("X", "Temperature #1", 40.0), t("X", "Temperature #2", 50.0)];
+        assert_eq!(disk_temperatures(&temps)[0].value, 50.0);
+    }
+
+    #[test]
+    fn ignores_non_storage() {
+        let mut cpu = t("CPU", "Temperature", 90.0);
+        cpu.hw_type = "Cpu".into();
+        assert!(disk_temperatures(&[cpu]).is_empty());
     }
 }

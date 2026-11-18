@@ -59,6 +59,8 @@ pub struct DiskState {
     /// 最热磁盘的温度及名称（传感器不可用时为 None）
     pub temp: Option<f64>,
     pub temp_name: Option<String>,
+    /// 每块磁盘的代表温度
+    pub temps: Vec<crate::sensors::DiskTemp>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -350,12 +352,12 @@ fn monitor_loop(app: AppHandle) {
         };
         let fan_rpm = sensors.main_fan_rpm().map(|v| v.round());
         // 磁盘温度：取所有存储设备温度中的最高值（每块盘可能有多个温度传感器）
-        let hot_disk = sensors
-            .temps
+        // 先为每块盘选出代表温度（NVMe 优先整盘复合温度，避免主控等单点传感器误报），再取最热的盘
+        let disk_temps = crate::sensors::disk_temperatures(&sensors.temps);
+        let hot_disk = disk_temps
             .iter()
-            .filter(|t| t.hw_type == "Storage")
             .max_by(|a, b| a.value.partial_cmp(&b.value).unwrap_or(std::cmp::Ordering::Equal))
-            .map(|t| (round1(t.value), t.hardware.clone()));
+            .map(|d| (round1(d.value), d.hardware.clone()));
         let disk_active = pdh_s.disk_active.map(round1);
 
         let point = SysPoint {
@@ -455,6 +457,7 @@ fn monitor_loop(app: AppHandle) {
                 active: disk_active,
                 temp: hot_disk.as_ref().map(|d| d.0),
                 temp_name: hot_disk.map(|d| d.1),
+                temps: disk_temps,
             },
             fan_rpm,
             fans: sensors.fans,
